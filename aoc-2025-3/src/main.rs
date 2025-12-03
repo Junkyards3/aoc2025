@@ -27,63 +27,64 @@ fn run(path: &str) -> Result<(String, String)> {
 fn part1(battery_lines: &[BatteryLine]) -> u64 {
     battery_lines
         .iter()
-        .map(|battery_line| compute_voltage(battery_line))
+        .map(|battery_line| compute_voltage(battery_line, 2))
         .sum()
 }
 
 fn part2(battery_lines: &[BatteryLine]) -> u64 {
-    0
+    battery_lines
+        .iter()
+        .map(|battery_line| compute_voltage(battery_line, 12))
+        .sum()
 }
 
 struct VoltageLoop {
-    first: Option<u8>,
-    second: Option<u8>,
+    size: usize,
+    values: Vec<Option<u8>>,
 }
 
 impl VoltageLoop {
-    fn new() -> Self {
+    fn new(size: usize) -> Self {
         VoltageLoop {
-            first: None,
-            second: None,
+            size,
+            values: vec![None; size],
         }
     }
 
-    fn update(&self, digit: u8, is_last: bool) -> VoltageLoop {
-        if !is_last && self.first.is_none_or(|first| first < digit) {
-            VoltageLoop {
-                first: Some(digit),
-                second: None,
-            }
-        } else if self.second.is_none_or(|sec| sec < digit) {
-            VoltageLoop {
-                first: self.first,
-                second: Some(digit),
-            }
-        } else {
-            VoltageLoop {
-                first: self.first,
-                second: self.second,
+    fn update(&mut self, digit: u8, remaining_digits: usize) {
+        let start_index = self.size.saturating_sub(remaining_digits);
+        for index in start_index..self.size {
+            if self.values[index].is_none_or(|value| value < digit) {
+                self.values[index] = Some(digit);
+                for rem_index in index + 1..self.size {
+                    self.values[rem_index] = None;
+                }
+                return;
             }
         }
     }
 
     fn get_value(&self) -> u64 {
-        self.first.expect("should have first value") as u64 * 10
-            + self.second.expect("should have second value") as u64
+        self.values
+            .iter()
+            .map(|v| v.expect("value should be filled") as u64)
+            .fold(0, |acc, val| acc * 10 + val)
     }
 }
 
-fn compute_voltage(battery_line: &BatteryLine) -> u64 {
+fn compute_voltage(battery_line: &BatteryLine, size: usize) -> u64 {
     let length = battery_line.0.len();
     battery_line
         .0
         .iter()
         .enumerate()
-        .fold(VoltageLoop::new(), |acc, (index, digit)| {
-            acc.update(*digit, index == length - 1)
+        .fold(VoltageLoop::new(size), |mut acc, (index, digit)| {
+            acc.update(*digit, length - index);
+            acc
         })
         .get_value()
 }
+
 fn parse_line(line: &str) -> Result<BatteryLine> {
     line.chars()
         .map(|c| {
@@ -103,6 +104,6 @@ mod tests {
     fn test_part() {
         let (part1, part2) = run("./files/test.txt").expect("could not run");
         assert_eq!(&part1, "357");
-        assert_eq!(&part2, "0");
+        assert_eq!(&part2, "3121910778619");
     }
 }
