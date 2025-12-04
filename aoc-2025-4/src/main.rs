@@ -1,51 +1,108 @@
 use anyhow::{Result, anyhow};
-use itertools::Itertools;
 use std::{
+    collections::{HashMap, HashSet},
     fs::File,
     io::{BufRead, BufReader},
 };
 
-#[derive(Clone, Copy)]
-enum Spot {
-    Paper,
-    Empty,
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+struct Pos {
+    x: isize,
+    y: isize,
+}
+
+impl Pos {
+    fn get_neighbors_pos(&self) -> Vec<Pos> {
+        let x = self.x;
+        let y = self.y;
+        vec![
+            Pos { x: x - 1, y: y - 1 },
+            Pos { x, y: y - 1 },
+            Pos { x: x + 1, y: y - 1 },
+            Pos { x: x - 1, y },
+            Pos { x: x + 1, y },
+            Pos { x: x - 1, y: y + 1 },
+            Pos { x, y: y + 1 },
+            Pos { x: x + 1, y: y + 1 },
+        ]
+    }
 }
 
 #[derive(Clone)]
-struct Grid(Vec<Vec<Spot>>);
+struct Status {
+    neighbors_count: u8,
+}
+
+#[derive(Clone)]
+struct Grid {
+    map: HashMap<Pos, Status>,
+    marked_for_deletion: HashSet<Pos>,
+}
 
 impl Grid {
-    fn get_at(&self, index: (isize, isize)) -> Option<Spot> {
-        let (x, y) = index;
-        if (0..self.0.len() as isize).contains(&x) && (0..self.0[0].len() as isize).contains(&y) {
-            Some(self.0[x as usize][y as usize])
-        } else {
-            None
+    fn new() -> Self {
+        Grid {
+            map: HashMap::new(),
+            marked_for_deletion: HashSet::new(),
         }
     }
 
-    fn get_pos_to_remove(&self) -> Vec<(usize, usize)> {
-        (0..self.0.len() as isize)
-            .cartesian_product(0..self.0[0].len() as isize)
-            .filter(|&idx| {
-                let is_paper = matches!(self.get_at(idx), Some(Spot::Paper));
-                if !is_paper {
-                    return false;
-                }
-                let neighbors_paper_count = get_neighbors(idx)
-                    .iter()
-                    .filter(|&&idx| matches!(self.get_at(idx), Some(Spot::Paper)))
-                    .count();
-                neighbors_paper_count <= 3
-            })
-            .map(|(x, y)| (x as usize, y as usize))
-            .collect::<Vec<_>>()
+    fn add(&mut self, pos: Pos) {
+        let neighbors = self.get_neighbors(pos);
+        for neighbor in neighbors.iter() {
+            self.map
+                .entry(*neighbor)
+                .and_modify(|status| status.neighbors_count += 1);
+
+            if self.map.get(neighbor).unwrap().neighbors_count >= 4 {
+                self.marked_for_deletion.remove(neighbor);
+            }
+        }
+        self.map.insert(
+            pos,
+            Status {
+                neighbors_count: neighbors.len() as u8,
+            },
+        );
+
+        if neighbors.len() < 4 {
+            self.marked_for_deletion.insert(pos);
+        }
     }
 
-    fn remove_papers(&mut self, pos: Vec<(usize, usize)>) {
-        for &(x, y) in pos.iter() {
-            self.0[x][y] = Spot::Empty;
+    fn get_neighbors(&self, pos: Pos) -> Vec<Pos> {
+        pos.get_neighbors_pos()
+            .into_iter()
+            .filter(|neighbor_pos| self.map.contains_key(neighbor_pos))
+            .collect()
+    }
+
+    fn remove_papers_once(&mut self) {
+        let mut new_marked_for_deletion = HashSet::new();
+        for pos in self.marked_for_deletion.clone().iter() {
+            new_marked_for_deletion.extend(self.remove(*pos));
         }
+        new_marked_for_deletion.retain(|pos| !self.marked_for_deletion.contains(pos));
+        self.marked_for_deletion = new_marked_for_deletion;
+    }
+
+    fn remove(&mut self, pos: Pos) -> Vec<Pos> {
+        let neighbors = self.get_neighbors(pos);
+        let mut marked_for_deletion = vec![];
+        for neighbor in neighbors.iter() {
+            self.map.entry(*neighbor).and_modify(|status| {
+                status.neighbors_count = status.neighbors_count.saturating_sub(1);
+            });
+            if self.map.get(neighbor).unwrap().neighbors_count < 4 {
+                marked_for_deletion.push(*neighbor);
+            }
+        }
+        self.map.remove(&pos);
+        marked_for_deletion
+    }
+
+    fn size(&self) -> usize {
+        self.map.len()
     }
 }
 
@@ -57,58 +114,44 @@ fn main() {
 
 fn run(path: &str) -> Result<(String, String)> {
     let file = File::open(path)?;
-    let grid_content = BufReader::new(file)
+    let mut grid = Grid::new();
+    let lines = BufReader::new(file)
         .lines()
-        .map(|s| parse_line(s?.as_str()))
-        .collect::<Result<Vec<_>>>()?;
-    let grid = Grid(grid_content);
+        .map(|line| line.map_err(|_| anyhow!("could not read line")))
+        .collect::<Result<Vec<String>>>()?;
+    for (x, line) in lines.iter().enumerate() {
+        for (y, ch) in line.chars().enumerate() {
+            if ch == '@' {
+                grid.add(Pos {
+                    x: x as isize,
+                    y: y as isize,
+                });
+            }
+        }
+    }
 
     let part1 = part1(&grid);
     let part2 = part2(&grid);
     Ok((part1.to_string(), part2.to_string()))
 }
 
-fn part1(grid: &Grid) -> u64 {
-    grid.get_pos_to_remove().len() as u64
+fn part1(grid: &Grid) -> usize {
+    let mut grid = grid.clone();
+    let init_size = grid.size();
+    grid.remove_papers_once();
+    init_size - grid.size()
 }
 
-fn part2(grid: &Grid) -> u64 {
-    let mut total_removed = 0;
+fn part2(grid: &Grid) -> usize {
     let mut grid = grid.clone();
+    let init_size = grid.size();
     loop {
-        let pos_to_remove = grid.get_pos_to_remove();
-        if pos_to_remove.is_empty() {
+        grid.remove_papers_once();
+        if grid.marked_for_deletion.is_empty() {
             break;
         }
-
-        total_removed += pos_to_remove.len();
-        grid.remove_papers(pos_to_remove);
     }
-    total_removed as u64
-}
-
-fn get_neighbors(index: (isize, isize)) -> Vec<(isize, isize)> {
-    let (x, y) = index;
-    vec![
-        (x - 1, y - 1),
-        (x, y - 1),
-        (x + 1, y - 1),
-        (x - 1, y),
-        (x + 1, y),
-        (x - 1, y + 1),
-        (x, y + 1),
-        (x + 1, y + 1),
-    ]
-}
-
-fn parse_line(line: &str) -> Result<Vec<Spot>> {
-    line.chars()
-        .map(|c| match c {
-            '.' => Ok(Spot::Empty),
-            '@' => Ok(Spot::Paper),
-            _ => Err(anyhow!("cannot match {}", c)),
-        })
-        .collect::<Result<Vec<Spot>>>()
+    init_size - grid.size()
 }
 
 #[cfg(test)]
