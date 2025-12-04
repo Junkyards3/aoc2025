@@ -42,12 +42,10 @@ impl Grid {
             .collect::<Vec<_>>()
     }
 
-    fn remove_papers(&self, pos: Vec<(usize, usize)>) -> Grid {
-        let mut new_grid_content = self.0.clone();
+    fn remove_papers(&mut self, pos: Vec<(usize, usize)>) {
         for &(x, y) in pos.iter() {
-            new_grid_content[x][y] = Spot::Empty;
+            self.0[x][y] = Spot::Empty;
         }
-        Grid(new_grid_content)
     }
 }
 
@@ -71,33 +69,20 @@ fn run(path: &str) -> Result<(String, String)> {
 }
 
 fn part1(grid: &Grid) -> u64 {
-    (0..grid.0.len() as isize)
-        .cartesian_product(0..grid.0[0].len() as isize)
-        .filter(|&idx| {
-            let is_paper = matches!(grid.get_at(idx), Some(Spot::Paper));
-            if !is_paper {
-                return false;
-            }
-            let neighbors_paper_count = get_neighbors(idx)
-                .iter()
-                .filter(|&&idx| matches!(grid.get_at(idx), Some(Spot::Paper)))
-                .count();
-            neighbors_paper_count <= 3
-        })
-        .count() as u64
+    grid.get_pos_to_remove().len() as u64
 }
 
 fn part2(grid: &Grid) -> u64 {
     let mut total_removed = 0;
-    let mut curr_grid = grid.clone();
+    let mut grid = grid.clone();
     loop {
-        let pos_to_remove = curr_grid.get_pos_to_remove();
+        let pos_to_remove = grid.get_pos_to_remove();
         if pos_to_remove.is_empty() {
             break;
         }
 
         total_removed += pos_to_remove.len();
-        curr_grid = curr_grid.remove_papers(pos_to_remove);
+        grid.remove_papers(pos_to_remove);
     }
     total_removed as u64
 }
