@@ -1,4 +1,4 @@
-use std::{fmt::Display, ptr::write};
+use std::fmt::Display;
 
 use anyhow::{Result, anyhow};
 
@@ -112,11 +112,11 @@ impl NodeRange {
     }
 
     fn push_new_lower(&mut self, new_lower: u64) -> bool {
+        self.left.push_new_lower(new_lower);
+        self.right.push_new_lower(new_lower);
         match self.value.adapt_new_lower(new_lower) {
             Some(adapted) => {
                 self.value = adapted;
-                self.left.push_new_lower(new_lower);
-                self.right.push_new_lower(new_lower);
                 true
             }
             None => false,
@@ -124,11 +124,11 @@ impl NodeRange {
     }
 
     fn push_new_upper(&mut self, new_upper: u64) -> bool {
+        self.left.push_new_upper(new_upper);
+        self.right.push_new_upper(new_upper);
         match self.value.adapt_new_upper(new_upper) {
             Some(adapted) => {
                 self.value = adapted;
-                self.left.push_new_upper(new_upper);
-                self.right.push_new_upper(new_upper);
                 true
             }
             None => false,
@@ -198,7 +198,7 @@ impl RangeTree {
         if let Some(node) = &mut self.node {
             let is_node_alive = node.push_new_lower(new_lower);
             if !is_node_alive {
-                self.node = None;
+                self.node = node.left.node.take();
             }
         }
     }
@@ -207,7 +207,7 @@ impl RangeTree {
         if let Some(node) = &mut self.node {
             let is_node_alive = node.push_new_upper(new_upper);
             if !is_node_alive {
-                self.node = None;
+                self.node = node.right.node.take();
             }
         }
     }
@@ -330,7 +330,7 @@ mod tests {
         for line in ranges.lines() {
             let food_range = parse_line_range(line).unwrap();
             tree.insert(food_range);
-            println!("After inserting {}:\n{}", food_range, tree);
+            println!("After inserting {food_range}:\n{tree}");
             check_tree_structure(&tree);
         }
     }
@@ -398,5 +398,64 @@ mod tests {
             current = &node.right;
         }
         None
+    }
+
+    #[test]
+    fn test_all_in_tree() {
+        let content = std::fs::read_to_string("./files/input.txt").unwrap();
+        let (ranges, _) = content
+            .split_once("\n\n")
+            .ok_or(anyhow!("does not contain double line jump"))
+            .unwrap();
+        let mut tree = RangeTree::new();
+        let mut food_ranges = vec![];
+
+        for line in ranges.lines() {
+            let food_range = parse_line_range(line).unwrap();
+            food_ranges.push(food_range);
+            tree.insert(food_range);
+        }
+
+        for range in food_ranges {
+            assert!(
+                tree.contains(range.lower),
+                "tree does not contain lower {}",
+                range.lower
+            );
+            assert!(
+                tree.contains(range.upper),
+                "tree does not contain upper {}",
+                range.upper
+            );
+        }
+    }
+
+    #[test]
+    fn test_specific_leaves_tree() {
+        let specific = 67073553206566;
+        let mut has_seen = false;
+
+        let content = std::fs::read_to_string("./files/input.txt").unwrap();
+        let (ranges, _) = content
+            .split_once("\n\n")
+            .ok_or(anyhow!("does not contain double line jump"))
+            .unwrap();
+        let mut tree = RangeTree::new();
+        let mut food_ranges = vec![];
+
+        for line in ranges.lines() {
+            let food_range = parse_line_range(line).unwrap();
+            food_ranges.push(food_range);
+            tree.insert(food_range);
+
+            if !has_seen && tree.contains(specific) {
+                has_seen = true;
+            }
+
+            if has_seen {
+                println!("After inserting {food_range}:\n{tree}");
+                assert!(tree.contains(specific))
+            }
+        }
     }
 }
