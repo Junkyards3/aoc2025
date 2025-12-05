@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use anyhow::{Result, anyhow};
 
 enum RangeFusionResult {
@@ -18,12 +16,6 @@ enum RangeContainResult {
 struct FoodRange {
     lower: u64,
     upper: u64,
-}
-
-impl Display for FoodRange {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}", self.lower, self.upper)
-    }
 }
 
 impl FoodRange {
@@ -146,27 +138,6 @@ impl NodeRange {
     fn size(&self) -> u64 {
         self.value.size() + self.left.size() + self.right.size()
     }
-
-    fn fmt_indented(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
-        for _ in 0..indent {
-            write!(f, "-")?;
-        }
-        writeln!(f, "{}", self.value)?;
-
-        if self.left.node.is_some() {
-            write!(f, "\x1b[34m")?;
-            self.left.fmt_indented(f, indent + 1)?;
-        }
-
-        if self.right.node.is_some() {
-            write!(f, "\x1b[32m")?;
-            self.right.fmt_indented(f, indent + 1)?;
-        }
-
-        write!(f, "\x1b[0m")?;
-
-        Ok(())
-    }
 }
 
 #[derive(Debug)]
@@ -211,20 +182,6 @@ impl RangeTree {
             }
         }
     }
-
-    fn fmt_indented(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
-        if let Some(node) = &self.node {
-            node.fmt_indented(f, indent)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl Display for RangeTree {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
-    }
 }
 
 fn main() {
@@ -247,7 +204,6 @@ fn part1(tree: &RangeTree, ids: &[u64]) -> usize {
 }
 
 fn part2(tree: &RangeTree) -> u64 {
-    println!("{tree}");
     tree.size()
 }
 
@@ -330,7 +286,6 @@ mod tests {
         for line in ranges.lines() {
             let food_range = parse_line_range(line).unwrap();
             tree.insert(food_range);
-            println!("After inserting {food_range}:\n{tree}");
             check_tree_structure(&tree);
         }
     }
@@ -453,7 +408,6 @@ mod tests {
             }
 
             if has_seen {
-                println!("After inserting {food_range}:\n{tree}");
                 assert!(tree.contains(specific))
             }
         }
