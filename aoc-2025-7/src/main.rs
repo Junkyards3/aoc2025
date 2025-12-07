@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::{BufRead, BufReader},
 };
@@ -46,6 +46,79 @@ impl Manifold {
             })
             .sum()
     }
+
+    fn final_line(&self) -> usize {
+        self.splitters
+            .iter()
+            .filter_map(|splitters_col| {
+                splitters_col
+                    .last_key_value()
+                    .map(|(last_line, _)| *last_line)
+            })
+            .max()
+            .unwrap()
+            + 1
+    }
+
+    fn get_timelines_count_all(&self) -> usize {
+        let mut already_computed = HashMap::new();
+        let mut final_count = 0;
+        let final_line = self.final_line();
+        for col in 0..self.splitters.len() {
+            final_count +=
+                self.get_timelines_count_memoized((final_line, col), &mut already_computed);
+        }
+        final_count
+    }
+
+    fn get_timelines_count_memoized(
+        &self,
+        destination: (usize, usize),
+        already_computed: &mut HashMap<(usize, usize), usize>,
+    ) -> usize {
+        if let Some(result) = already_computed.get(&destination) {
+            *result
+        } else {
+            let mut count = 0;
+            let (line, col) = destination;
+            let min_line = self.splitters[col]
+                .range(..line)
+                .next_back()
+                .map(|(splitter_line, _)| *splitter_line)
+                .unwrap_or(0);
+
+            if col > 0 {
+                count = self.splitters[col - 1]
+                    .range(min_line..line)
+                    .map(|(splitter_left_line, _)| {
+                        self.get_timelines_count_memoized(
+                            (*splitter_left_line, col - 1),
+                            already_computed,
+                        )
+                    })
+                    .sum::<usize>();
+            }
+
+            if col < self.splitters.len() - 1 {
+                count += self.splitters[col + 1]
+                    .range(min_line..line)
+                    .map(|(splitter_right_line, _)| {
+                        self.get_timelines_count_memoized(
+                            (*splitter_right_line, col + 1),
+                            already_computed,
+                        )
+                    })
+                    .sum::<usize>();
+            }
+
+            if min_line == 0 && col == self.source_col {
+                count += 1
+            }
+
+            already_computed.insert(destination, count);
+            count
+        }
+    }
 }
 
 fn main() {
@@ -66,7 +139,7 @@ fn part1(manifold: &Manifold) -> usize {
 }
 
 fn part2(manifold: &Manifold) -> usize {
-    0
+    manifold.get_timelines_count_all()
 }
 
 fn parse_file(path: &str) -> Result<Manifold> {
@@ -104,6 +177,6 @@ mod tests {
     fn test_part() {
         let (part1, part2) = run("./files/test.txt").expect("could not run");
         assert_eq!(&part1, "21");
-        assert_eq!(&part2, "0");
+        assert_eq!(&part2, "40");
     }
 }
