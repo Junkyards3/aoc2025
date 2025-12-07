@@ -4,6 +4,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader},
     str::from_utf8,
+    time::Instant,
 };
 
 fn main() {
@@ -18,14 +19,22 @@ struct IdRange {
 }
 
 fn run(path: &str) -> Result<(String, String)> {
+    let now = Instant::now();
     let file = File::open(path)?;
     let ranges: Vec<IdRange> = BufReader::new(file)
         .split(b',')
         .map(|s| parse_range(&s?))
         .collect::<Result<Vec<_>>>()?;
+    println!("duration parsing : {:?}", now.elapsed());
 
+    let now = Instant::now();
     let part1 = part1(&ranges);
+    println!("duration part 1 : {:?}", now.elapsed());
+
+    let now = Instant::now();
     let part2 = part2(&ranges);
+    println!("duration part 2 : {:?}", now.elapsed());
+
     Ok((part1.to_string(), part2.to_string()))
 }
 
@@ -136,7 +145,7 @@ mod tests {
     fn is_repeat(chain: &str) -> bool {
         let chars: Vec<char> = chain.chars().collect();
         (1..chars.len())
-            .filter(|chunk_count| chars.len() % chunk_count == 0)
+            .filter(|chunk_count| chars.len().is_multiple_of(*chunk_count))
             .any(|length| {
                 let chunks = chars.chunks(length).collect::<Vec<_>>();
                 chunks.windows(2).all(|window| window[0] == window[1])

@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
+    time::Instant,
 };
 
 enum Op {
@@ -105,9 +106,18 @@ fn main() {
 }
 
 fn run(path: &str) -> Result<(String, String)> {
+    let now = Instant::now();
     let problem = parse(path)?;
+    println!("duration parsing : {:?}", now.elapsed());
+
+    let now = Instant::now();
     let part1 = part1(&problem);
+    println!("duration part 1 : {:?}", now.elapsed());
+
+    let now = Instant::now();
     let part2 = part2(&problem);
+    println!("duration part 2 : {:?}", now.elapsed());
+
     Ok((part1.to_string(), part2.to_string()))
 }
 

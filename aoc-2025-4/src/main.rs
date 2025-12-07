@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::{BufRead, BufReader},
+    time::Instant,
 };
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
@@ -113,6 +114,7 @@ fn main() {
 }
 
 fn run(path: &str) -> Result<(String, String)> {
+    let now = Instant::now();
     let file = File::open(path)?;
     let mut grid = Grid::new();
     let lines = BufReader::new(file)
@@ -129,9 +131,16 @@ fn run(path: &str) -> Result<(String, String)> {
             }
         }
     }
+    println!("duration parsing : {:?}", now.elapsed());
 
+    let now = Instant::now();
     let part1 = part1(&grid);
+    println!("duration part 1 : {:?}", now.elapsed());
+
+    let now = Instant::now();
     let part2 = part2(&grid);
+    println!("duration part 2 : {:?}", now.elapsed());
+
     Ok((part1.to_string(), part2.to_string()))
 }
 

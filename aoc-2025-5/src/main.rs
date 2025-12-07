@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use anyhow::{Result, anyhow};
 
 enum RangeFusionResult {
@@ -191,10 +193,17 @@ fn main() {
 }
 
 fn run(path: &str) -> Result<(String, String)> {
+    let now = Instant::now();
     let (tree, ids) = parse_file(path)?;
+    println!("duration parsing : {:?}", now.elapsed());
 
+    let now = Instant::now();
     let part1 = part1(&tree, &ids);
+    println!("duration part 1 : {:?}", now.elapsed());
+
+    let now = Instant::now();
     let part2 = part2(&tree);
+    println!("duration part 2 : {:?}", now.elapsed());
 
     Ok((part1.to_string(), part2.to_string()))
 }
