@@ -1,6 +1,12 @@
 use anyhow::Result;
 use anyhow::anyhow;
-use pathfinding::prelude::dijkstra;
+use good_lp::Constraint;
+use good_lp::Expression;
+use good_lp::ProblemVariables;
+use good_lp::Solution;
+use good_lp::SolverModel;
+use good_lp::scip;
+use good_lp::variable;
 use std::collections::BTreeSet;
 use std::{
     fs::File,
@@ -8,7 +14,7 @@ use std::{
     time::Instant,
 };
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Indicators {
     list: BTreeSet<usize>,
 }
@@ -19,18 +25,6 @@ impl Indicators {
             list: BTreeSet::from_iter(list),
         }
     }
-
-    fn apply(&self, to_apply: &Indicators) -> Indicators {
-        let mut new = self.clone();
-        for switch in to_apply.list.iter() {
-            if new.list.contains(switch) {
-                new.list.remove(switch);
-            } else {
-                new.list.insert(*switch);
-            }
-        }
-        new
-    }
 }
 
 struct Machine {
@@ -40,22 +34,82 @@ struct Machine {
 }
 
 impl Machine {
-    fn find_shortest_button_press(&self) -> usize {
-        let origin = Indicators::new(vec![]);
-        dijkstra(
-            &origin,
-            |node| {
-                self.buttons
-                    .iter()
-                    .map(|button| (node.apply(button), 1))
-                    .collect::<Vec<_>>()
-            },
-            |node| *node == self.target,
-        )
-        .unwrap()
-        .0
-        .len()
-            - 1
+    fn find_shortest_button_press(&self) -> Result<f64> {
+        let mut problem = ProblemVariables::new();
+        let but_vars = problem.add_vector(variable().integer().min(0).max(1), self.buttons.len());
+        let eveness_vars = problem.add_vector(variable().integer().min(0), self.joltage.len());
+
+        let mut obj = Expression::from(0);
+
+        //minimise sum of button presses
+        for var in but_vars.iter() {
+            obj.add_mul(1, var);
+        }
+
+        //add wanted constraints
+        let mut constraints = vec![Expression::from(0); self.joltage.len()];
+
+        for (button, var) in self.buttons.iter().zip(but_vars.iter()) {
+            for pos in button.list.iter() {
+                constraints[*pos].add_mul(1, var);
+            }
+        }
+
+        let constraints: Vec<Constraint> = constraints
+            .into_iter()
+            .zip(eveness_vars.iter())
+            .enumerate()
+            .map(|(pos, (constraint, e_var))| {
+                if self.target.list.contains(&pos) {
+                    Expression::eq(constraint, *e_var * 2 + 1)
+                } else {
+                    Expression::eq(constraint, *e_var * 2)
+                }
+            })
+            .collect();
+
+        //evaluate sum of button presses
+        Ok(problem
+            .minimise(&obj)
+            .using(scip)
+            .with_all(constraints)
+            .solve()?
+            .eval(obj))
+    }
+
+    fn find_shortest_button_press_joltage(&self) -> Result<f64> {
+        let mut problem = ProblemVariables::new();
+        let but_vars = problem.add_vector(variable().integer().min(0), self.buttons.len());
+
+        let mut obj = Expression::from(0);
+
+        //minimise sum of button presses
+        for var in but_vars.iter() {
+            obj.add_mul(1, var);
+        }
+
+        //add wanted constraints
+        let mut constraints = vec![Expression::from(0); self.joltage.len()];
+
+        for (button, var) in self.buttons.iter().zip(but_vars.iter()) {
+            for pos in button.list.iter() {
+                constraints[*pos].add_mul(1, var);
+            }
+        }
+
+        let constraints: Vec<Constraint> = constraints
+            .into_iter()
+            .enumerate()
+            .map(|(pos, constraint)| Expression::eq(constraint, self.joltage[pos] as u32))
+            .collect();
+
+        //evaluate sum of button presses
+        Ok(problem
+            .minimise(&obj)
+            .using(scip)
+            .with_all(constraints)
+            .solve()?
+            .eval(obj))
     }
 }
 
@@ -84,12 +138,23 @@ fn run(path: &str) -> Result<(String, String)> {
 fn part1(machines: &[Machine]) -> usize {
     machines
         .iter()
-        .map(|machine| machine.find_shortest_button_press())
+        .map(|machine| {
+            machine
+                .find_shortest_button_press()
+                .expect("could not solve machine") as usize
+        })
         .sum()
 }
 
-fn part2(machines: &[Machine]) -> u128 {
-    0
+fn part2(machines: &[Machine]) -> usize {
+    machines
+        .iter()
+        .map(|machine| {
+            machine
+                .find_shortest_button_press_joltage()
+                .expect("could not solve machine") as usize
+        })
+        .sum()
 }
 
 fn parse_file(path: &str) -> Result<Vec<Machine>> {
@@ -150,15 +215,13 @@ fn parse_button(word: &str) -> Result<Indicators> {
 }
 
 fn parse_voltage(word: &str) -> Result<Vec<usize>> {
-    let voltage = word
-        .split(',')
+    word.split(',')
         .map(|sub_word| {
             sub_word
                 .parse::<usize>()
                 .map_err(|_| anyhow!("could not parse light {sub_word}"))
         })
-        .collect::<Result<Vec<_>>>();
-    Ok(voltage?)
+        .collect::<Result<Vec<_>>>()
 }
 
 #[cfg(test)]
@@ -169,6 +232,6 @@ mod tests {
     fn test_part() {
         let (part1, part2) = run("./files/test.txt").expect("could not run");
         assert_eq!(&part1, "7");
-        assert_eq!(&part2, "0");
+        assert_eq!(&part2, "33");
     }
 }
