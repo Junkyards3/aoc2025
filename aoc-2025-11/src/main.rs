@@ -1,7 +1,6 @@
-use anyhow::Result;
-use anyhow::anyhow;
-use std::collections::HashMap;
+use anyhow::{Result, anyhow};
 use std::{
+    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
     time::Instant,
@@ -12,9 +11,20 @@ struct Network {
 }
 
 impl Network {
-    fn paths_count(&self) -> usize {
-        let mut cache = HashMap::from([("out".to_owned(), 1)]);
-        self.paths_count_cached("you", &mut cache)
+    fn paths_count(&self, source: &str, target: &str) -> usize {
+        let mut cache = HashMap::from([(target.to_owned(), 1)]);
+        self.paths_count_cached(source, &mut cache)
+    }
+
+    fn paths_count_2(&self) -> usize {
+        let fft_to_dac_count = self.paths_count("fft", "dac");
+        if fft_to_dac_count != 0 {
+            self.paths_count("svr", "fft") * fft_to_dac_count * self.paths_count("dac", "out")
+        } else {
+            self.paths_count("svr", "dac")
+                * self.paths_count("dac", "fft")
+                * self.paths_count("fft", "out")
+        }
     }
 
     fn paths_count_cached(&self, origin: &str, cache: &mut HashMap<String, usize>) -> usize {
@@ -60,11 +70,11 @@ fn run(path: &str) -> Result<(String, String)> {
 }
 
 fn part1(network: &Network) -> usize {
-    network.paths_count()
+    network.paths_count("you", "out")
 }
 
 fn part2(network: &Network) -> usize {
-    0
+    network.paths_count_2()
 }
 
 fn parse_file(path: &str) -> Result<Network> {
@@ -88,5 +98,12 @@ mod tests {
         let (part1, part2) = run("./files/test.txt").expect("could not run");
         assert_eq!(&part1, "5");
         assert_eq!(&part2, "0");
+    }
+
+    #[test]
+    fn test2_part() {
+        let (part1, part2) = run("./files/test2.txt").expect("could not run");
+        assert_eq!(&part1, "0");
+        assert_eq!(&part2, "2");
     }
 }
